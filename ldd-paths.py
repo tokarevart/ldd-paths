@@ -2,19 +2,27 @@
 import subprocess
 import os
 import sys
+import argparse
+from typing import NoReturn
 
-def abort(msg: str):
+
+def abort(msg: str) -> NoReturn:
     print(msg, file=sys.stderr)
     sys.exit(1)
 
+
 def ldd(binary_path: str) -> list[str]:
-    output = subprocess.check_output(['ldd', binary_path], text=True)
-    return output.splitlines()
+    try:
+        output = subprocess.run(['ldd', binary_path],
+                                text=True, capture_output=True, check=True)
+        return output.stdout.splitlines()
+    except subprocess.CalledProcessError as e:
+        abort(f'ldd failed: exit code = {e.returncode}, error = {e}')
 
 
 def ldd_paths(binary_path: str) -> tuple[list[str], list[str]]:
     default_dirs = ['/lib', '/usr/lib', '/lib64', '/usr/lib64']
-    
+
     not_found: list[str] = []
     paths: list[str] = []
     for line in ldd(binary_path):
@@ -36,11 +44,11 @@ def ldd_paths(binary_path: str) -> tuple[list[str], list[str]]:
                     paths.append(path)
                     found = True
                     break
-            
+
             if not found:
                 not_found.append(dep_name)
                 continue
-        
+
         elif len(parts) == 2:
             [dep_name, abs] = line.split(' => ')
 
@@ -58,10 +66,14 @@ def ldd_paths(binary_path: str) -> tuple[list[str], list[str]]:
 
 
 if __name__ == '__main__':
-    if len(sys.argv) < 2 or len(sys.argv) > 3:
-        abort(f'Usage: {sys.argv[0]} <binary_path>')
-    
-    (paths, not_found) = ldd_paths(sys.argv[1])
+    parser = argparse.ArgumentParser(
+        description='Resolve and print absolute paths of dynamic dependencies using ldd'
+    )
+    parser.add_argument('binary_path',
+                        help='Path to the binary file to analyze')
+    args = parser.parse_args()
+
+    (paths, not_found) = ldd_paths(args.binary_path)
 
     print('\n'.join(paths))
     if not_found:
