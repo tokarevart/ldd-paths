@@ -3,6 +3,9 @@ import subprocess
 import os
 import sys
 
+def abort(msg: str):
+    print(msg, file=sys.stderr)
+    sys.exit(1)
 
 def ldd(binary_path: str) -> list[str]:
     output = subprocess.check_output(['ldd', binary_path], text=True)
@@ -19,11 +22,8 @@ def ldd_paths(binary_path: str) -> tuple[list[str], list[str]]:
             continue
 
         line = line.strip()
-
-        try:
-            [dep_name, abs] = line.split(' => ')
-
-        except ValueError:
+        parts = line.split(' => ')
+        if len(parts) == 1:
             [dep_name, _] = line.split(' (')
             if os.path.isabs(dep_name):
                 paths.append(dep_name)
@@ -40,8 +40,10 @@ def ldd_paths(binary_path: str) -> tuple[list[str], list[str]]:
             if not found:
                 not_found.append(dep_name)
                 continue
-                
-        else:
+        
+        elif len(parts) == 2:
+            [dep_name, abs] = line.split(' => ')
+
             if ' (' not in abs:
                 not_found.append(dep_name)
                 continue
@@ -49,16 +51,18 @@ def ldd_paths(binary_path: str) -> tuple[list[str], list[str]]:
             [abs, _] = abs.split(' (')
             paths.append(abs)
 
+        else:
+            abort(f'unexpected line format: {line}')
+
     return (paths, not_found)
 
 
 if __name__ == '__main__':
     if len(sys.argv) < 2 or len(sys.argv) > 3:
-        print(f'Usage: {sys.argv[0]} <binary_path>', file=sys.stderr)
-        sys.exit(1)
+        abort(f'Usage: {sys.argv[0]} <binary_path>')
     
     (paths, not_found) = ldd_paths(sys.argv[1])
+
     print('\n'.join(paths))
     if not_found:
-        print('\n'.join([x + ' NOT FOUND' for x in not_found]), file=sys.stderr)
-        sys.exit(1)
+        abort('\n'.join([x + ' NOT FOUND' for x in not_found]))
